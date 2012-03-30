@@ -104,6 +104,8 @@ public class MultiSCM extends SCM implements Saveable {
 		MultiSCMRevisionState revisionState = new MultiSCMRevisionState();		
 		build.addAction(revisionState);
 		
+		MultiGitTagAction multiGitTagAction = new MultiGitTagAction(build, scms);
+		
 		HashSet<Object> scmActions = new HashSet<Object>();
 		
 		FileOutputStream logStream = new FileOutputStream(changelogFile);
@@ -133,6 +135,9 @@ public class MultiSCM extends SCM implements Saveable {
 
 			subChangeLog.delete();
 		}
+		
+		build.addAction(multiGitTagAction);
+		
 		logWriter.write(String.format("</%s>\n", MultiSCMChangeLogParser.ROOT_XML_TAG));
 		logWriter.close();
 

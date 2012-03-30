@@ -1,0 +1,285 @@
+package org.jenkinsci.plugins.multiplescms;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Logger;
+
+import javax.servlet.ServletException;
+
+import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.StaplerResponse;
+import com.ctc.wstx.io.BranchingReaderSource;
+
+import hudson.EnvVars;
+import hudson.Extension;
+import hudson.FilePath;
+import hudson.model.Describable;
+import hudson.model.AbstractBuild;
+import hudson.model.Descriptor;
+import hudson.model.Hudson;
+import hudson.model.TaskAction;
+import hudson.model.TaskListener;
+import hudson.model.TaskThread;
+import hudson.model.TaskThread.ListenerAndText;
+import hudson.plugins.git.Branch;
+import hudson.plugins.git.BranchSpec;
+import hudson.plugins.git.GitAPI;
+import hudson.plugins.git.GitException;
+import hudson.plugins.git.GitSCM;
+import hudson.plugins.git.GitTagAction;
+import hudson.plugins.git.IGitAPI;
+import hudson.plugins.git.GitTagAction.TagInfo;
+import hudson.plugins.git.GitTagAction.TagWorkerThread;
+import hudson.plugins.git.UserRemoteConfig;
+import hudson.plugins.git.util.Build;
+import hudson.plugins.git.util.BuildData;
+import hudson.remoting.VirtualChannel;
+import hudson.scm.AbstractScmTagAction;
+import hudson.scm.SCM;
+import hudson.security.ACL;
+import hudson.security.Permission;
+import hudson.util.CopyOnWriteMap;
+import hudson.util.DescribableList;
+import hudson.util.MultipartFormDataParser;
+
+public class MultiGitTagAction extends TaskAction implements
+		Describable<MultiGitTagAction> {
+
+    protected final AbstractBuild build;
+    
+	public final String ws;
+	public final Map<String, Map<String, List<String>>> tags;
+	private final DescribableList<SCM, Descriptor<SCM>> scms;
+	
+	public final Map<String, List<BranchSpec> > repositories;
+
+	// TODO: use the last build to update tags
+	protected MultiGitTagAction(AbstractBuild build,
+			DescribableList<SCM, Descriptor<SCM>> scms) {
+		
+		this.build = build;
+		this.ws = build.getWorkspace().getRemote();
+		
+		this.scms = scms;
+
+		tags = new CopyOnWriteMap.Tree<String, Map<String, List<String>>>();
+		repositories = new HashMap<String, List<BranchSpec> >();
+		
+		for (SCM scm : scms) {
+			if (scm instanceof GitSCM)
+			{
+				GitSCM git = (GitSCM) scm;
+				
+				String scmName = git.getScmName();
+				
+				List<BranchSpec> branches = git.getBranches();
+				repositories.put(scmName, branches);
+				
+				Map<String, List<String>> tags = new CopyOnWriteMap.Tree<String, List<String>>();
+				for (BranchSpec b : branches) {
+					tags.put(b.getName(), new ArrayList<String>());
+				}
+			}
+		}
+	}
+	
+    public final String getUrlName() {
+        // to make this consistent with CVSSCM, even though the name is bit off
+        return "multitagBuild";
+    }
+
+	public String getDisplayName() {
+		return "Multi-Git Tag";
+	}
+	
+    /**
+     * Returns true if the build is tagged already.
+     */
+    public boolean isTagged() {
+    	// TODO: implement this
+    	return false;
+    }
+
+	public String getIconFileName() {
+
+		if (!isTagged() && !getACL().hasPermission(getPermission()))
+			return null;
+
+		return "save.gif";
+	}
+
+    public AbstractBuild getBuild() {
+        return build;
+    }
+
+    /**
+     * This message is shown as the tool tip of the build badge icon.
+     */
+    public String getTooltip() {
+        return null;
+    }
+    
+	public Descriptor<MultiGitTagAction> getDescriptor() {
+		return Hudson.getInstance().getDescriptorOrDie(getClass());
+	}
+
+    public static class TagInfo {
+    	private String scm, module, tag;
+    }
+	
+    protected ACL getACL() {
+        return build.getACL();
+    }
+    
+
+    public void doIndex(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
+        req.getView(this, chooseAction()).forward(req,rsp);
+    }
+    
+	@Override
+	public Permission getPermission() {
+		return GitSCM.TAG;
+	}
+
+	protected synchronized String chooseAction() {
+		if (workerThread != null)
+			return "inProgress.jelly";
+		return "multitagForm.jelly";
+	}
+	
+    /**
+     * Invoked to actually tag the workspace.
+     */
+    public synchronized void doSubmit(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
+        getACL().checkPermission(getPermission());
+
+        MultipartFormDataParser parser = new MultipartFormDataParser(req);
+
+		Logger LOGGER = Logger.getLogger(MultiGitTagAction.class.getName());
+		LOGGER.info("[DEBUG] !!! triggered tag !!! ");
+		
+		Map<String/*repo*/, Map<String/*branch*/, String/*Tag*/> > newTags = new HashMap<String, Map<String, String> >();
+		
+		int i = -1;
+		for ( Map.Entry<String, List<BranchSpec> > repo : this.repositories.entrySet() ) {
+			i++;
+			
+			Map<String/*branch*/, String/*Tag*/> branchTags = new HashMap<String, String>();
+			
+			int j = -1;
+			for (BranchSpec b : repo.getValue()) {
+				j++;
+				
+				if (repo.getValue().size() > 1 && parser.get("tag_" + i + "_" + j) == null)
+					continue; // when tags.size()==1, UI won't show the checkbox.
+			
+				branchTags.put(b.getName(), parser.get("name_" + i + "_" + j));
+			}
+			
+			if (branchTags.size() > 0)
+				newTags.put(repo.getKey(), branchTags);
+			
+		}
+
+		String comment = parser.get("comment");
+		
+		new MultiTagWorkerThread(newTags, comment).start();
+		
+		// Logging tags set
+//		for (Map.Entry<String, Map<String, String>> r : newTags.entrySet()) {
+//			for (Map.Entry<String, String> b : r.getValue().entrySet()) {
+//				LOGGER.info("[DEBUG] starting tagging for repository: " + r.getKey() + ", branch: " + b.getKey() + ", tag: " + b.getValue());
+//			}
+//			
+//			synchronized (this.tags) {
+//				try {
+//					while (getWorkerThread() != null && getWorkerThread().isRunning()){
+//						this.tags.wait();
+//				    }
+//					
+//					
+//				} catch(InterruptedException e) {
+//					LOGGER.info("[ERROR] working thread interrupted");
+//				}
+//			}
+//			
+//		}
+
+        rsp.sendRedirect(".");
+    }
+    
+    /**
+     * The thread that performs tagging operation asynchronously.
+     */
+    public final class MultiTagWorkerThread extends TaskThread {
+    	
+        private final Map<String, Map<String, String> > tagSet;
+        /**
+         * If the user provided a separate credential, this object represents that.
+         */
+        private final String comment;
+
+        public MultiTagWorkerThread(Map<String, Map<String, String> > tagSet, String comment) {
+            super(MultiGitTagAction.this, ListenerAndText.forMemory());
+            
+            this.tagSet = tagSet;
+            this.comment = comment;
+        }
+
+        @Override
+        protected void perform(final TaskListener listener) throws Exception {
+        	
+        	final EnvVars environment = build.getEnvironment(listener);
+        	
+        	for (final String r : tagSet.keySet()) {
+	            for (final String b : tagSet.get(r).keySet()) {
+	                try {
+	                    final FilePath workspace = new FilePath(new File(ws + "/" + b));
+	                    
+	                    Object returnData = workspace.act(new FilePath.FileCallable<Object[]>() {
+	                        private static final long serialVersionUID = 1L;
+	
+	                        public Object[] invoke(File localWorkspace, VirtualChannel channel)
+	                                throws IOException {
+	                        	
+	                            IGitAPI git = new GitAPI("git", workspace, listener, environment, null);
+	                            String buildNum = "hudson-" + build.getProject().getName() + "-" + tagSet.get(b);
+	
+	                            if (git.hasGitRepo()) {
+	                            	git.tag(tagSet.get(r).get(b), "Hudson Build #" + buildNum);
+	                            }
+	                            	
+	                            return new Object[]{null, build};
+	                        }
+	                    });
+	                    
+	                    for (Map.Entry<String, String> e : tagSet.get(r).entrySet())
+	                        MultiGitTagAction.this.tags.get(r).get(e.getKey()).add(e.getValue());
+	
+	                    getBuild().save();
+	                    workerThread = null;
+	                }
+	                catch (GitException ex) {
+	                    ex.printStackTrace(listener.error("Error taggin repo '%s' : %s", b, ex.getMessage()));
+	                    // Failed. Try the next one
+	                    listener.getLogger().println("Trying next branch");
+	                }
+	            } // end branches (b)
+        	} // end repositories (r)
+        }
+    }    
+	
+	/**
+	 * Just for assisting form related stuff.
+	 */
+	@Extension
+	public static class DescriptorImpl extends Descriptor<MultiGitTagAction> {
+		public String getDisplayName() {
+			return "MultiTag";
+		}
+	}
+}
