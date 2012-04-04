@@ -137,7 +137,7 @@ public class MultiGitTagAction extends TaskAction implements
     
 
     public void doIndex(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
-        req.getView(this, chooseAction()).forward(req,rsp);
+    	req.getView(this, chooseAction()).forward(req,rsp);
     }
     
 	@Override
@@ -146,8 +146,10 @@ public class MultiGitTagAction extends TaskAction implements
 	}
 
 	protected synchronized String chooseAction() {
-		if (workerThread != null)
-			return "inProgress.jelly";
+		// TODO: should have an inProgress.jelly though
+		
+//		if (workerThread != null)
+//			return "inProgress.jelly";
 		return "multitagForm.jelly";
 	}
 	
@@ -233,12 +235,20 @@ public class MultiGitTagAction extends TaskAction implements
         @Override
         protected void perform(final TaskListener listener) throws Exception {
         	
+        	Logger LOGGER = Logger.getLogger(MultiTagWorkerThread.class.getName());
+        	
         	final EnvVars environment = build.getEnvironment(listener);
         	
+        	// LOGGER.info("[DEBUG] environment: " + environment.toString());
+        	
         	for (final String r : tagSet.keySet()) {
+        		// LOGGER.info("[DEBUG] repo: " + r);
 	            for (final String b : tagSet.get(r).keySet()) {
-	                try {
-	                    final FilePath workspace = new FilePath(new File(ws + "/" + b));
+	            	// LOGGER.info("[DEBUG] branch: " + b);
+	            	try {
+	                    final FilePath workspace = new FilePath(new File(ws + "/" + r));
+	                    
+	                    LOGGER.info("[DEBUG] workspace: " + ws + "/" + r);
 	                    
 	                    Object returnData = workspace.act(new FilePath.FileCallable<Object[]>() {
 	                        private static final long serialVersionUID = 1L;
@@ -248,8 +258,14 @@ public class MultiGitTagAction extends TaskAction implements
 	                        	
 	                            IGitAPI git = new GitAPI("git", workspace, listener, environment, null);
 	                            String buildNum = "hudson-" + build.getProject().getName() + "-" + tagSet.get(b);
+	                            
+	                            Logger LOGGER = Logger.getLogger(MultiTagWorkerThread.class.getName());
+	                            LOGGER.info("[DEBUG] git localWorkspace: " + localWorkspace);
+	                            
+	                            LOGGER.info("[DEBUG] git buildNum: " + buildNum);
 	
 	                            if (git.hasGitRepo()) {
+	                            	LOGGER.info("[DEBUG] workspace " + workspace.getName() + " is a git repository!");
 	                            	git.tag(tagSet.get(r).get(b), "Hudson Build #" + buildNum);
 	                            }
 	                            	
@@ -257,13 +273,18 @@ public class MultiGitTagAction extends TaskAction implements
 	                        }
 	                    });
 	                    
+	                    // LOGGER.info("[DEBUG] returnData: " + returnData.getClass().getName());
+	                    
 	                    for (Map.Entry<String, String> e : tagSet.get(r).entrySet())
 	                        MultiGitTagAction.this.tags.get(r).get(e.getKey()).add(e.getValue());
 	
+	                    LOGGER.info("[DEBUG] trying saving the build");
 	                    getBuild().save();
 	                    workerThread = null;
 	                }
 	                catch (GitException ex) {
+	                	LOGGER.info("[DEBUG] exception: " + ex.getMessage());
+	                	
 	                    ex.printStackTrace(listener.error("Error taggin repo '%s' : %s", b, ex.getMessage()));
 	                    // Failed. Try the next one
 	                    listener.getLogger().println("Trying next branch");
