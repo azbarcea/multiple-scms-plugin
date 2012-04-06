@@ -258,32 +258,44 @@ public class MultiGitTagAction extends TaskAction implements
                         
                         for (final String r : tagSet.keySet()) {
                             LOGGER.info("[DEBUG] repo: " + r);
+                            final FilePath repository = new FilePath(new File(ws + '/' + r));
+                            
                             for (final String b : tagSet.get(r).keySet()) {
                                 LOGGER.info("[DEBUG] branch: " + b);
 
-                                final FilePath repository = new FilePath(new File(ws + '/' + r));
                                 try {
+	                                try {
+	                                    IGitAPI git = new GitAPI("git", repository, listener, environment, null);
+	                                    tagName = tagSet.get(r).get(b);
+	                                    String buildNum = "hudson-" + build.getProject().getName() + "-" + tagName;
+	
+	                                    LOGGER.info("[DEBUG] git repository path: " + repository);
+	
+	                                    LOGGER.info("[DEBUG] git buildNum: " + buildNum);
+	
+	                                    if (!git.hasGitRepo()) {
+	                                        LOGGER.log(Level.INFO, "[DEBUG] path {0} is a git repository!", repository.getName());
+	                                        git.tag(tagName, "Hudson Build #" + buildNum);
+	                                    }
+	
+	                                    // add the current tag to the Action tags member, to be saved to build.xml. 
+	                                    //  Next time you'll open the build you'll see the tags given.
+	                                    if (MultiGitTagAction.this.tags.get(r) == null)
+	                                    	MultiGitTagAction.this.tags.put(r, new HashMap<String, List<String>>());
+	                                    
+	                                    if (MultiGitTagAction.this.tags.get(r).get(b) == null)
+	                                    	MultiGitTagAction.this.tags.get(r).put(b, new ArrayList<String>());
 
-                                    IGitAPI git = new GitAPI("git", repository, listener, environment, null);
-                                    tagName = tagSet.get(r).get(b);
-                                    String buildNum = "hudson-" + build.getProject().getName() + "-" + tagName;
-
-                                    LOGGER.info("[DEBUG] git repository path: " + repository);
-
-                                    LOGGER.info("[DEBUG] git buildNum: " + buildNum);
-
-                                    if (git.hasGitRepo()) {
-                                        LOGGER.log(Level.INFO, "[DEBUG] path {0} is a git repository!", repository.getName());
-                                        git.tag(tagName, "Hudson Build #" + buildNum);
-                                    }
-
-                                    // add the current tag to the Action tags member, to be saved to build.xml. 
-                                    //  Next time you'll open the build you'll see the tags given.
-                                    MultiGitTagAction.this.tags.get(r).get(b).add(tagName);
-
-                                }  catch (GitException ex) {
-                                    LOGGER.info("[DEBUG] exception: " + ex.getMessage());
-                                    throw new IOException(ex.getMessage(), ex);
+	                                    MultiGitTagAction.this.tags.get(r).get(b).add(tagName);
+	
+	                                }  catch (GitException ex) {
+	                                	LOGGER.log(Level.SEVERE, "Uncaught GIT exception", ex);
+	                                	
+	                                    // throw new IOException(ex.getMessage(), ex);
+	                                	// trying next branch
+	                                }
+                                } catch (Exception unknownException) {
+                                	LOGGER.log(Level.SEVERE, "Uncaught UNKNOWN exception", unknownException);
                                 }
                             } // end for branches
                         } // end for repositories
