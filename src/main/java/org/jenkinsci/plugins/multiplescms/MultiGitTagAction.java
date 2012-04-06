@@ -273,7 +273,7 @@ public class MultiGitTagAction extends TaskAction implements
 	
 	                                    LOGGER.info("[DEBUG] git buildNum: " + buildNum);
 	
-	                                    if (!git.hasGitRepo()) {
+	                                    if (git.hasGitRepo()) {
 	                                        LOGGER.log(Level.INFO, "[DEBUG] path {0} is a git repository!", repository.getName());
 	                                        git.tag(tagName, "Hudson Build #" + buildNum);
 	                                    }
