@@ -22,6 +22,7 @@ import hudson.model.Describable;
 import hudson.model.AbstractBuild;
 import hudson.model.Descriptor;
 import hudson.model.Hudson;
+import hudson.model.Run;
 import hudson.model.TaskAction;
 import hudson.model.TaskListener;
 import hudson.model.TaskThread;
@@ -66,8 +67,8 @@ public class MultiGitTagAction extends TaskAction implements
         this.scms = scms;
 
         tags = new CopyOnWriteMap.Tree<String, Map<String, List<String>>>();
+        
         repositories = new HashMap<String, List<BranchSpec>>();
-
         for (SCM scm : scms) {
             if (scm instanceof GitSCM) {
                 GitSCM git = (GitSCM) scm;
@@ -77,12 +78,18 @@ public class MultiGitTagAction extends TaskAction implements
                 List<BranchSpec> branches = git.getBranches();
                 repositories.put(scmName, branches);
 
-                Map<String, List<String>> tags = new CopyOnWriteMap.Tree<String, List<String>>();
+                Map<String, List<String>> scmTags = new CopyOnWriteMap.Tree<String, List<String>>();
                 for (BranchSpec b : branches) {
-                    tags.put(b.getName(), new ArrayList<String>());
+                	scmTags.put(b.getName(), new ArrayList<String>());
                 }
+                
+                tags.put(scmName, scmTags);
+                
+                // TODO: now using the GitAPI let's try to identify the tags
             }
         }
+        
+        
     }
 
     public final String getUrlName() {
@@ -191,26 +198,6 @@ public class MultiGitTagAction extends TaskAction implements
 
         new MultiTagWorkerThread(newTags, comment).start();
 
-        // Logging tags set
-//		for (Map.Entry<String, Map<String, String>> r : newTags.entrySet()) {
-//			for (Map.Entry<String, String> b : r.getValue().entrySet()) {
-//				LOGGER.info("[DEBUG] starting tagging for repository: " + r.getKey() + ", branch: " + b.getKey() + ", tag: " + b.getValue());
-//			}
-//			
-//			synchronized (this.tags) {
-//				try {
-//					while (getWorkerThread() != null && getWorkerThread().isRunning()){
-//						this.tags.wait();
-//				    }
-//					
-//					
-//				} catch(InterruptedException e) {
-//					LOGGER.info("[ERROR] working thread interrupted");
-//				}
-//			}
-//			
-//		}
-
         rsp.sendRedirect(".");
     }
 
@@ -280,11 +267,11 @@ public class MultiGitTagAction extends TaskAction implements
 	
 	                                    // add the current tag to the Action tags member, to be saved to build.xml. 
 	                                    //  Next time you'll open the build you'll see the tags given.
-	                                    if (MultiGitTagAction.this.tags.get(r) == null)
-	                                    	MultiGitTagAction.this.tags.put(r, new HashMap<String, List<String>>());
-	                                    
-	                                    if (MultiGitTagAction.this.tags.get(r).get(b) == null)
-	                                    	MultiGitTagAction.this.tags.get(r).put(b, new ArrayList<String>());
+//	                                    if (MultiGitTagAction.this.tags.get(r) == null)
+//	                                    	MultiGitTagAction.this.tags.put(r, new HashMap<String, List<String>>());
+//	                                    
+//	                                    if (MultiGitTagAction.this.tags.get(r).get(b) == null)
+//	                                    	MultiGitTagAction.this.tags.get(r).put(b, new ArrayList<String>());
 
 	                                    MultiGitTagAction.this.tags.get(r).get(b).add(tagName);
 	
