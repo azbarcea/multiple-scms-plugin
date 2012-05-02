@@ -2,6 +2,7 @@ package org.jenkinsci.plugins.multiplescms;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.logging.Logger;
 
 import javax.servlet.ServletException;
 
+import org.eclipse.jgit.lib.ObjectId;
 import org.kohsuke.stapler.StaplerRequest;
 import org.kohsuke.stapler.StaplerResponse;
 import com.ctc.wstx.io.BranchingReaderSource;
@@ -47,16 +49,29 @@ import hudson.security.Permission;
 import hudson.util.CopyOnWriteMap;
 import hudson.util.DescribableList;
 import hudson.util.MultipartFormDataParser;
+import hudson.util.StreamTaskListener;
 
 public class MultiGitTagAction extends TaskAction implements
         Describable<MultiGitTagAction> {
 
     protected final AbstractBuild build;
+    // TODO: remove
     public final String ws;
+    // TODO: remove
     public final Map<String, Map<String, List<String>>> tags;
     private final DescribableList<SCM, Descriptor<SCM>> scms;
+    
+    public final List<GitSCM> gitSCMs = new ArrayList<GitSCM>();
+    
+    // TODO: remove
     public final Map<String, List<BranchSpec>> repositories;
-
+    
+    /**
+     * This is initialized from the last build.
+     *
+     */
+    public final Map<String, List<String>> repositoriesTags = new CopyOnWriteMap.Tree<String, List<String>>(); // TODO: remove
+   
     // TODO: use the last build to update tags
     protected MultiGitTagAction(AbstractBuild build,
             DescribableList<SCM, Descriptor<SCM>> scms) {
@@ -65,13 +80,14 @@ public class MultiGitTagAction extends TaskAction implements
         this.ws = build.getWorkspace().getRemote();
 
         this.scms = scms;
-
+        
         tags = new CopyOnWriteMap.Tree<String, Map<String, List<String>>>();
         
         repositories = new HashMap<String, List<BranchSpec>>();
         for (SCM scm : scms) {
             if (scm instanceof GitSCM) {
                 GitSCM git = (GitSCM) scm;
+                gitSCMs.add(git);
 
                 String scmName = git.getScmName();
 
@@ -84,6 +100,7 @@ public class MultiGitTagAction extends TaskAction implements
                 }
                 
                 tags.put(scmName, scmTags);
+                repositoriesTags.put(scmName, new ArrayList<String>());
                 
                 // TODO: now using the GitAPI let's try to identify the tags
             }
@@ -91,7 +108,11 @@ public class MultiGitTagAction extends TaskAction implements
         
         
     }
-
+    
+    public final ObjectId getBuildSha1(SCM scm) {
+    	return ((GitSCM)scm).getBuildData(build, false).lastBuild.getSHA1();
+    }
+    
     public final String getUrlName() {
         // to make this consistent with CVSSCM, even though the name is bit off
         return "multitagBuild";
@@ -134,8 +155,12 @@ public class MultiGitTagAction extends TaskAction implements
     }
 
     public static class TagInfo {
+    	ObjectId sha1;
+    	Build build;
+    	BuildData buildData;
+    	SCM scm;
 
-        private String scm, module, tag;
+        private String module, tag;
     }
 
     protected ACL getACL() {
@@ -163,7 +188,8 @@ public class MultiGitTagAction extends TaskAction implements
      * Invoked to actually tag the workspace.
      */
     public synchronized void doSubmit(StaplerRequest req, StaplerResponse rsp) throws IOException, ServletException {
-        getACL().checkPermission(getPermission());
+        
+    	getACL().checkPermission(getPermission());
 
         MultipartFormDataParser parser = new MultipartFormDataParser(req);
 

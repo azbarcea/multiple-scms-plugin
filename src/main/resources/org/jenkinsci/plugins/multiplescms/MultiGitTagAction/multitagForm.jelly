@@ -33,8 +33,31 @@ THE SOFTWARE.
   <l:layout norefresh="true" xmlns:local="local">
     <st:include it="${it.build}" page="sidepanel.jelly" />
     <l:main-panel>
-      <h1>${%Build} #${it.build.number} or ${it.test}</h1>
+      <h1>${%Build} #${it.build.number}</h1>
       
+      <div>
+	      <table style="margin-top: 1em; margin-left:1em;">
+			<tbody>
+				<j:forEach var="scm" items="${it.gitSCMs}">
+				<tr>
+					<td><a><img height="48" style="margin-right:1em" alt="" width="48" src="/plugin/git/icons/git-48x48.png" /></a></td>
+					<td style="vertical-align:middle">
+						<a>
+							<b>Revision</b>: ${it.getBuildSha1(scm).name}
+							<ul>
+								<j:set var="scmName" value="${scm.getScmName()}" />
+								<j:forEach var="branch" items="${scm.getBranches()}">
+									<li>${scmName}/${branch.getName()}</li>
+								</j:forEach>
+							</ul>
+						</a>
+					</td>
+				</tr>
+				</j:forEach>
+			</tbody>
+		  </table>
+	  </div>
+	  
 	  <div>
 		<h2>${%Variables}</h2>
 		<div><pre>${it.ws}</pre></div>
