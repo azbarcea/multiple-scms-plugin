@@ -59,56 +59,13 @@ THE SOFTWARE.
 	  </div>
 	  
 	  <div>
-		<h2>${%Variables}</h2>
-		<div><pre>${it.ws}</pre></div>
-		
         <div><form action="submit" method="post" enctype="multipart/form-data" name="tag">
-        	<j:forEach var="r" items="${it.repositories.entrySet()}" varStatus="rloop">
-        	
-			<d:taglib uri="local">
-			  <d:tag name="listTags">
-			  	<j:forEach var="b" items="${tags.get(r.getKey())}">
-			    	<ul>
-			      		<li>${b.getKey()}</li>
-			      		<li>
-			      			<ul>
-			      			<j:forEach var="t" items="${b.getValue()}">
-			      				<li>${t}</li>
-			      			</j:forEach>
-			      			</ul>
-			      		</li>
-			      	</ul>
-			    </j:forEach>
-			  </d:tag>
-			</d:taglib>
-        	
-        	  <div><h2>${r.getKey()}</h2></div>
-	          <table class="middle-align">
-	            <tr>
-	              <th />
-	              <th>${%Branch}</th>
-	              <th>${%Tag}</th>
-	            </tr>
-	            <j:set var="remotes" value="${r.getValue()}" />
-	            <j:forEach var="m" items="${remotes}" varStatus="loop">
-	              <tr>
-	                <td><j:if test="${remotes.size()!=1}">
-	                  <input type="checkbox" name="tag_${rloop.index}_${loop.index}" checked="true"
-	                         id="tag_${rloop.index}_${loop.index}" onchange="updateRow(this,${loop.index})" />
-	                </j:if></td>
-	                <td style="white-space:nowrap;"><label for="tag_${rloop.index}_${loop.index}">
-	                  ${m.getName()}
-	                </label></td>
-	                <td width="100%">
-	                  <input type="text" name="name_${rloop.index}_${loop.index}"
-	                         value="${it.makeTagURL(m.getName())}" style="width:100%" id="name_${rloop.index}_${loop.index}" />
-	                </td>
-	              </tr>
-	            </j:forEach>
-	          </table>
-    	    </j:forEach>
     	    <div>
-	            ${%Commit comment:}
+    	    	<div>
+    	    	${%Tag Name:}
+    	    	<input type="text" id="mt_tagname" name="mt_tagname" class="setting-input" />
+    	    	</div>
+	            ${%Commit Comment:}
 	            <textarea name="comment" rows="1" class="setting-input">
 	            	<st:out value="Tagged from ${it.build}"/>
 	            </textarea>
