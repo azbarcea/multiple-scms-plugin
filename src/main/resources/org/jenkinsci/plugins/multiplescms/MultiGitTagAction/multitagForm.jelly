@@ -54,9 +54,11 @@ THE SOFTWARE.
 					</td>
 					<td>		
 						<ul class="tags">
-							<j:if test="${!it.getTagName().isEmpty()}">
-              					<li><a href="#">${it.getTagName()}</a></li>
-            				</j:if>
+							<j:forEach var="t" items="${it.getTagNames(scm.getScmName())}">
+								<j:if test="${!t.isEmpty()}">
+	              					<li><a href="#">${t}</a></li>
+	            				</j:if>
+							</j:forEach>
 						</ul>
 					</td>					
 				</tr>
