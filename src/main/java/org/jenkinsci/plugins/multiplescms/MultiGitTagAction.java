@@ -49,6 +49,10 @@ public class MultiGitTagAction extends TaskAction implements
     protected final AbstractBuild<?, ?> build;
     protected TagInfo tag = null;
     
+    public final String getTagName() {
+    	return (tag != null) ? tag.getName() : "";
+    }
+    
     /**
      * all the Git SCMs that may be tagged
      */

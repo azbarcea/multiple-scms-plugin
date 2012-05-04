@@ -54,8 +54,9 @@ THE SOFTWARE.
 					</td>
 					<td>		
 						<ul class="tags">
-							<li><a href="#">tag</a></li>
-							<li><a href="#">tag name</a></li>
+							<j:if test="${!it.getTagName().isEmpty()}">
+              					<li><a href="#">${it.getTagName()}</a></li>
+            				</j:if>
 						</ul>
 					</td>					
 				</tr>
