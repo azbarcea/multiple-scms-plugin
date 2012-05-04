@@ -106,7 +106,7 @@ public class MultiGitTagAction extends TaskAction implements
         if (!isTagged() && !getACL().hasPermission(getPermission()))
             return null;
 
-        return "save.gif";
+        return "/plugin/multiple-scms/icons/24x24/label.png";
     }
 
     public AbstractBuild<?, ?> getBuild() {
