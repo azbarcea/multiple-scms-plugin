@@ -28,7 +28,6 @@ THE SOFTWARE.
   This belongs to a build view.
 -->
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
-  <j:set var="descriptor" value="${it.descriptor}" />
 
   <l:layout norefresh="true" xmlns:local="local">
     <st:include it="${it.build}" page="sidepanel.jelly" />
