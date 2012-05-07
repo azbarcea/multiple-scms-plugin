@@ -91,6 +91,7 @@ THE SOFTWARE.
           	<f:submit value="${%Tag}" />
         </form></div>		
 	  </div>
+	  <div class="stacktrace">${it.result.toString()}</div>
 
     </l:main-panel>
   </l:layout>

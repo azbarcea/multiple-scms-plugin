@@ -3,6 +3,9 @@ package org.jenkinsci.plugins.multiplescms;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -50,27 +53,26 @@ public class MultiGitTagAction extends TaskAction implements
 	 * current build
 	 */
     protected final AbstractBuild<?, ?> build;
+    /**
+     * Current Tag being set
+     */
     protected TagInfo currentTag = null;
     
+    public final Writer result = new StringWriter();
+    protected final PrintWriter printWriter = new PrintWriter(result);
+    
     protected List<TagInfo> tags = new ArrayList<TagInfo>();
-    public Map<String, Set<TagInfo>> revisionTags = new CopyOnWriteMap.Tree<String, Set<TagInfo>>();
-    
-    public final List<String> getTagNames(String revision) {
-    	
-    	// TODO: write nicer code
-    	List<String> tagNames = new ArrayList<String>();
-    	for ( TagInfo tag : revisionTags.get(revision) ) {
-    		tagNames.add(tag.getName());
-    	}
-    	
-    	return tagNames;
-    }
-    
+    protected Map<String, Set<TagInfo>> revisionTags = new CopyOnWriteMap.Tree<String, Set<TagInfo>>();
     /**
      * all the Git SCMs that may be tagged
      */
     public final List<GitSCM> gitSCMs = new ArrayList<GitSCM>();
-    
+
+    /**
+     * Constructor
+     * @param build
+     * @param scms
+     */
     protected MultiGitTagAction(AbstractBuild<?, ?> build,
             DescribableList<SCM, Descriptor<SCM>> scms) {
 
@@ -82,7 +84,25 @@ public class MultiGitTagAction extends TaskAction implements
             }
         }
     }
+
+    /**
+     * Returns all tags (names) for specified revision 
+     * @param revision
+     * @return
+     */
+    public final List<String> getTagNames(String revision) {
+    	List<String> tagNames = new ArrayList<String>();
+
+   		Set<TagInfo> tags = revisionTags.get(revision);
+   		if (tags != null)
+	    	for ( TagInfo tag :  tags) {
+	    		tagNames.add(tag.getName());
+	    	}
+    	
+    	return tagNames;
+    }
     
+
     /**
      * Returns the SHA for the corresponding repository/branch/ and build's commit. 
      * 	This SHA will be used to tag current build 
@@ -93,11 +113,7 @@ public class MultiGitTagAction extends TaskAction implements
     	return ((GitSCM)scm).getBuildData(build, false).lastBuild.getSHA1();
     }
     
-    /**
-     * TODO: consider remove
-     */
     public final String getUrlName() {
-        // to make this consistent with CVSSCM, even though the name is bit off
         return "multitagBuild";
     }
 
@@ -105,9 +121,6 @@ public class MultiGitTagAction extends TaskAction implements
      * The Action Name that will be displayed on the left menu
      */
     public String getDisplayName() {
-//    	if (tag == null)
-//    		return "Multi-Git Tag";
-    	
     	if (tags.isEmpty())
     		return "MultiGit Tag";
     	
@@ -122,7 +135,6 @@ public class MultiGitTagAction extends TaskAction implements
     }
 
     public String getIconFileName() {
-
         if (!isTagged() && !getACL().hasPermission(getPermission()))
             return null;
 
@@ -174,41 +186,13 @@ public class MultiGitTagAction extends TaskAction implements
 
         MultipartFormDataParser parser = new MultipartFormDataParser(req);
 
-        Logger LOGGER = Logger.getLogger(MultiGitTagAction.class.getName());
-        LOGGER.info("[DEBUG] !!! triggered tag !!! ");
-
-//        int i = -1;
-//        for (Map.Entry<String, List<BranchSpec>> repo : this.repositories.entrySet()) {
-//            i++;
-//
-//            Map<String/*branch*/, String/*Tag*/> branchTags = new HashMap<String, String>();
-//
-//            int j = -1;
-//            for (BranchSpec b : repo.getValue()) {
-//                j++;
-//
-//                if (repo.getValue().size() > 1 && parser.get("tag_" + i + "_" + j) == null) {
-//                    continue; // when tags.size()==1, UI won't show the checkbox.
-//                }
-//                branchTags.put(b.getName(), parser.get("name_" + i + "_" + j));
-//            }
-//
-//            if (branchTags.size() > 0) {
-//                newTags.put(repo.getKey(), branchTags);
-//            }
-//
-//        }
-
         TagInfo newTag = new TagInfo(parser.get("mt_tagname"), parser.get("comment"));
-
         if (newTag.isValid())
         {
         	this.tags.add(newTag);
         	this.currentTag = newTag;
         }
 
-        LOGGER.info("[DEBUG] Tag: " + newTag);
-        
         if (this.tags.contains(newTag.getName()))
         	throw new GitException("tag already exists");
         
@@ -222,12 +206,8 @@ public class MultiGitTagAction extends TaskAction implements
      */
     public final class MultiTagWorkerThread extends TaskThread {
 
-    	public Logger LOGGER = Logger.getLogger(MultiTagWorkerThread.class.getName());
-    	
         public MultiTagWorkerThread() {
-            super(MultiGitTagAction.this, ListenerAndText.forMemory(null));
-            
-            LOGGER.info("[DEBUG] thread MultiTagWorkerThread ... created");
+            super(MultiGitTagAction.this, ListenerAndText.forMemory());
         }
         
         /**
@@ -254,8 +234,6 @@ public class MultiGitTagAction extends TaskAction implements
             
             final FilePath workspace = build.getWorkspace();
             
-            LOGGER.info("[DEBUG] workspace: " + workspace.getName() );
-            
             for(final GitSCM scm : gitSCMs) {
             	
 				String scmName = scm.getScmName();
@@ -267,16 +245,11 @@ public class MultiGitTagAction extends TaskAction implements
         			revisionTags.put(scmName, scmTags);
         		}
         		
-            	LOGGER.info("[DEBUG] processing SCM: " + scmName );
-            	
             	// get the working directory for the current SCM being processed
             	final FilePath workingDirectory = workingDirectory(scm, workspace, environment);
             	
-            	LOGGER.info("[DEBUG] workingDirectory: " + workingDirectory.getName() );
-
-            	if (!workingDirectory.exists()) {
-                    // TODO: throw some exception
-                }
+            	if (!workingDirectory.exists())
+                    throw new GitException("workingDirectory: " + workingDirectory.getRemote() + " does not exists.");
             	
             	try {
             		
@@ -287,41 +260,40 @@ public class MultiGitTagAction extends TaskAction implements
 						public Revision invoke(File localWorkspace, VirtualChannel channel)
 								throws IOException, InterruptedException {
 							
-							LOGGER.info("[DEBUG] localWorkspace: " + localWorkspace.getName() );
-							
 							FilePath ws = new FilePath(localWorkspace);
-							
-							LOGGER.info("[DEBUG] ws: " + ws.getName() );
 							
 							final PrintStream log = listener.getLogger();
 							
 							log.println("Tagging:" + ws.getName() + " / " + ws.getRemote() + " - " + ws.getChannel());
 							
 							// we use another git instance because invoke is done remotely. 
-							GitAPI git = new GitAPI(scm.getGitExe(build.getBuiltOn(), listener), ws, listener, environment, scm.getReference());
+							GitAPI git = new GitAPI(scm.getGitExe(, listener), workingDirectory, listener, environment, null);
 							
-							LOGGER.info("[DEBUG] tagging: " + currentTag + " with sha1: " +  getBuildSha1(scm).name());
-							git.tag(currentTag.getName(), currentTag.getComment(), getBuildSha1(scm));
+							if (!git.hasGitRepo())
+								return null;
 							
-							return null;
+							ObjectId sha1 = getBuildSha1(scm);
+							git.tag(currentTag.getName(), currentTag.getComment(), sha1);
+							
+							return new Revision(sha1);
 						}
-            			
             		});
             		
-            		LOGGER.info("[DEBUG] saving build ...");
-            		
-					scmTags.add(currentTag);					
-
+					scmTags.add(currentTag);
+					
             	} catch(GitException ex) {
-            		LOGGER.info("[ERROR] GitException raised ..." + ex.getMessage());
+            	    ex.printStackTrace(printWriter);
+            	    
             		ex.printStackTrace(listener.error("Error taggin repo: %s", ex.getMessage()));
             		throw ex;
             	} catch(IOException ex) {
-            		LOGGER.info("[ERROR] IOException raised ..." + ex.getMessage());
+            	    ex.printStackTrace(printWriter);
+            	    
             		ex.printStackTrace(listener.error("Error taggin repo: %s", ex.getMessage()));
             		throw ex;
             	} catch(InterruptedException ex) {
-            		LOGGER.info("[ERROR] InterruptedException raised ..." + ex.getMessage());
+            	    ex.printStackTrace(printWriter);
+            	    
             		ex.printStackTrace(listener.error("Error taggin repo: %s", ex.getMessage()));
             		throw ex;
             	}
@@ -330,7 +302,7 @@ public class MultiGitTagAction extends TaskAction implements
             
             getBuild().save();
             
-            LOGGER.info("[DEBUG] nullifying worker thread");
+            currentTag = null;
             workerThread = null;
         }
     }
