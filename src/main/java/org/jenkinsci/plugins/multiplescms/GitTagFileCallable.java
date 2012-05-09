@@ -20,8 +20,7 @@ import org.eclipse.jgit.lib.ObjectId;
  *
  * @author alex
  */
-public final class GitTagFileCallable implements FilePath.FileCallable<String>,
-        Serializable {
+public final class GitTagFileCallable implements FilePath.FileCallable<String> {
 
     protected final TaskListener listener;
     protected final FilePath workingDirectory;
