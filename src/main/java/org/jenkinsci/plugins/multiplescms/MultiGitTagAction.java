@@ -42,7 +42,7 @@ import hudson.util.MultipartFormDataParser;
 import java.io.*;
 
 public class MultiGitTagAction extends TaskAction implements
-        Describable<MultiGitTagAction>, Serializable {
+        Describable<MultiGitTagAction> {
 
     /**
      * current build
@@ -202,7 +202,7 @@ public class MultiGitTagAction extends TaskAction implements
     /**
      * The thread that performs tagging operation asynchronously.
      */
-    public final class MultiTagWorkerThread extends TaskThread implements Serializable {
+    public final class MultiTagWorkerThread extends TaskThread {
 
         public MultiTagWorkerThread() {
             super(MultiGitTagAction.this, ListenerAndText.forMemory());
@@ -249,31 +249,7 @@ public class MultiGitTagAction extends TaskAction implements
                     throw new GitException("workingDirectory: " + workingDirectory.getRemote() + " does not exists.");
 
                 try {
-                    workingDirectory.act(new FilePath.FileCallable<Void>() {
-        
-                        private static final long serialVersionUID = 2L;
-
-                        public Void invoke(File localWorkspace, VirtualChannel channel)
-                                throws IOException, InterruptedException {
-
-                            FilePath ws = new FilePath(localWorkspace);
-                            
-                            final PrintStream log = listener.getLogger();
-                            
-                            log.println("Tagging:" + ws.getName() + " / " + ws.getRemote() + " - " + ws.getChannel());
-                            
-                            // we use another git instance because invoke is done remotely. 
-                            GitAPI git = new GitAPI("git", workingDirectory, listener, environment, null);
-                            
-                            if (!git.hasGitRepo())
-                                return null;
-                            
-                            ObjectId sha1 = getBuildSha1(scm);
-                            git.tag(currentTag.getName(), currentTag.getComment(), sha1);
-
-                            return null;
-                        }
-                    });
+                    workingDirectory.act(new GitTagFileCallable(listener, workingDirectory, environment, getBuildSha1(scm), currentTag.getName(), currentTag.getComment()));
 
                     scmTags.add(currentTag);
 
@@ -308,7 +284,7 @@ public class MultiGitTagAction extends TaskAction implements
      *
      * @author alex
      */
-    public class TagInfo {
+    public class TagInfo implements Serializable {
 
         private String name;
         private String comment;
